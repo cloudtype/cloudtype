@@ -1,0 +1,155 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-server
+  labels:
+    service: cloudtype
+    app: cloudtype
+    module: server
+spec:
+  ports:
+    - port: 9009
+      targetPort: 9009
+      protocol: TCP
+  selector:
+    service: cloudtype
+    app: cloudtype
+    module: server
+  clusterIP: None
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudtype-server
+  labels:
+    service: cloudtype
+    app: cloudtype
+    module: server
+spec:
+  selector:
+    matchLabels:
+      service: cloudtype
+      app: cloudtype
+      module: server
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        service: cloudtype
+        app: cloudtype
+        module: server
+    spec:
+      containers:
+        - name: server
+          image: server
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9009
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: DEBUG
+              value: cloudtype:*,cloudtype-k8s:*
+            - name: CLOUDTYPE_DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: cloudtype-secrets
+                  key: MONGODB_URL
+            - name: CLOUDTYPE_DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: cloudtype-secrets
+                  key: MONGODB_DATABASE
+            - name: AGENT_ENDPOINT
+              value: https://cloudtype-agent.cloudtype.svc:8443
+            - name: AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudtype-secrets
+                  key: AGENT_TOKEN
+          resources:
+            requests:
+              cpu: 10m
+              memory: 128Mi
+            limits:
+              cpu: '2'
+              memory: 2Gi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 9009
+              scheme: HTTP
+            initialDelaySeconds: 20
+            timeoutSeconds: 180
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 9009
+              scheme: HTTP
+            initialDelaySeconds: 20
+            timeoutSeconds: 180
+            periodSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sleep
+                  - '5'
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 20
+      serviceAccountName: cloudtype-sa
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: purpose
+                    operator: In
+                    values:
+                      - system
+      tolerations:
+        - operator: Exists
+          effect: NoExecute
+        - operator: Exists
+          effect: NoSchedule
+      enableServiceLinks: false
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: server-hpa
+  labels:
+    service: cloudtype
+    app: cloudtype
+    module: server
+spec:
+  scaleTargetRef:
+    kind: Deployment
+    name: server
+    apiVersion: apps/v1
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80

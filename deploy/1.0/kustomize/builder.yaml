@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: docker-daemon
+  labels:
+    service: cloudtype
+    app: builder
+    module: docker-daemon
+spec:
+  ports:
+    - port: 2376
+      protocol: TCP
+  selector:
+    service: cloudtype
+    app: builder
+    module: docker-daemon
+  clusterIP: None
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: docker-daemon-volume
+#   labels:
+#     service: cloudtype
+#     app: builder
+#     module: docker-daemon
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 100Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: docker-daemon
+  labels:
+    service: cloudtype
+    app: builder
+    module: docker-daemon
+spec:
+  selector:
+    matchLabels:
+      service: cloudtype
+      app: builder
+      module: docker-daemon
+  replicas: 1
+  minReadySeconds: 10
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        service: cloudtype
+        app: builder
+        module: docker-daemon
+    spec:
+      serviceAccountName: cloudtype-builder
+      containers:
+        - name: docker-dind
+          image: docker:20-dind
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ''
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 2376
+          # volumeMounts:
+          #   - name: docker-graph-storage
+          #     mountPath: /var/lib/docker
+      # volumes:
+      #   - name: docker-graph-storage
+      #     persistentVolumeClaim:
+      #       claimName: docker-daemon-volume
+      terminationGracePeriodSeconds: 30
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: purpose
+                    operator: In
+                    values:
+                      - system
+      tolerations:
+        - operator: Exists
+          effect: NoExecute
+        - operator: Exists
+          effect: NoSchedule

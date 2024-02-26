@@ -1,0 +1,834 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    cloudtype.io/role: system
+  name: cloudtype
+---
+apiVersion: v1
+imagePullSecrets:
+- name: reg-cloudtype
+kind: ServiceAccount
+metadata:
+  name: cloudtype-agent
+  namespace: cloudtype
+---
+apiVersion: v1
+imagePullSecrets:
+- name: reg-cloudtype
+kind: ServiceAccount
+metadata:
+  name: cloudtype-builder
+  namespace: cloudtype
+---
+apiVersion: v1
+imagePullSecrets:
+- name: reg-cloudtype
+kind: ServiceAccount
+metadata:
+  name: cloudtype-sa
+  namespace: cloudtype
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cloudtype-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: cloudtype-agent
+  namespace: cloudtype
+---
+apiVersion: v1
+data:
+  nginx.conf: "worker_processes auto;\n\nevents {\n  worker_connections 1024;\n}\n\nhttp
+    {\n  include /etc/nginx/mime.types;\n  default_type application/octet-stream;\n
+    \ sendfile on;\n  gzip on;\n\n  server {\n    index index.html;\n    root /app/html;\n\n
+    \   resolver kube-dns.kube-system.svc.cluster.local valid=1s;\n    set $upstream_endpoint
+    cloudtype-server.cloudtype.svc.cluster.local:9009;\n\n    location /api/ {\n      rewrite
+    ^/api(/.*)$ $1 break;\n      \n      proxy_http_version 1.1;\n      proxy_set_header
+    Upgrade $http_upgrade;\n      proxy_set_header Connection \"upgrade\";\n      proxy_set_header
+    X-Real-IP $remote_addr;\n      proxy_set_header X-Forwarded-For $remote_addr;\n
+    \     proxy_set_header X-Forwarded-Proto $scheme;\n      proxy_set_header Host
+    $http_host;\n\n      proxy_pass http://$upstream_endpoint;\n      proxy_redirect
+    off;\n    }\n\n    location / {\n      proxy_set_header X-Real-IP $remote_addr;\n
+    \     proxy_set_header X-Forwarded-For $remote_addr;\n      proxy_set_header X-Forwarded-Proto
+    $scheme;\n      proxy_set_header Host $http_host;\n\n      try_files $uri $uri/
+    /index.html;\n    }\n  }\n}\n"
+kind: ConfigMap
+metadata:
+  name: cloudtype-dashboard-configmap
+  namespace: cloudtype
+---
+apiVersion: v1
+data:
+  nginx.conf: "worker_processes auto;\n\nevents {\n  worker_connections 1024;\n}\n\nhttp
+    {\n  include /etc/nginx/mime.types;\n  default_type application/octet-stream;\n
+    \ sendfile on;\n  gzip on;\n\n  server {\n    index index.html;\n    root /app/html;\n\n
+    \   resolver kube-dns.kube-system.svc.cluster.local valid=1s;\n    set $upstream_endpoint
+    cloudtype-server.cloudtype.svc.cluster.local:9009;\n\n    location /api/ {\n      rewrite
+    ^/api(/.*)$ $1 break;\n      \n      proxy_http_version 1.1;\n      proxy_set_header
+    Upgrade $http_upgrade;\n      proxy_set_header Connection \"upgrade\";\n      proxy_set_header
+    X-Real-IP $remote_addr;\n      proxy_set_header X-Forwarded-For $remote_addr;\n
+    \     proxy_set_header X-Forwarded-Proto $scheme;\n      proxy_set_header Host
+    $http_host;\n\n      proxy_pass http://$upstream_endpoint;\n      proxy_redirect
+    off;\n    }\n\n    location / {\n      proxy_set_header X-Real-IP $remote_addr;\n
+    \     proxy_set_header X-Forwarded-For $remote_addr;\n      proxy_set_header X-Forwarded-Proto
+    $scheme;\n      proxy_set_header Host $http_host;\n\n      try_files $uri $uri/
+    /index.html;\n    }\n  }\n}\n"
+kind: ConfigMap
+metadata:
+  name: cloudtype-operator-configmap
+  namespace: cloudtype
+---
+apiVersion: v1
+data:
+  MONGODB_DATABASE: Y2xvdWR0eXBl
+  MONGODB_URL: bW9uZ29kYjovL21vbmdvOjI3MDE3L2Nsb3VkdHlwZQo=
+kind: Secret
+metadata:
+  name: cloudtype-secrets
+  namespace: cloudtype
+type: Opaque
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: agent
+    module: agent
+    service: cloudtype
+  name: cloudtype-agent
+  namespace: cloudtype
+spec:
+  clusterIP: None
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - appProtocol: https
+    name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: agent
+    module: agent
+    service: cloudtype
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: agent
+    module: agent
+    service: cloudtype
+  name: cloudtype-agent-lb
+  namespace: cloudtype
+spec:
+  allocateLoadBalancerNodePorts: true
+  externalTrafficPolicy: Local
+  internalTrafficPolicy: Cluster
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - appProtocol: https
+    name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: agent
+    module: agent
+    service: cloudtype
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: cloudtype
+    module: dashboard
+    service: cloudtype
+  name: cloudtype-dashboard
+  namespace: cloudtype
+spec:
+  clusterIP: None
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    app: cloudtype
+    module: dashboard
+    service: cloudtype
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-dashboard-lb
+  namespace: cloudtype
+spec:
+  allocateLoadBalancerNodePorts: true
+  externalTrafficPolicy: Local
+  internalTrafficPolicy: Cluster
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: cloudtype
+    module: dashboard
+    service: cloudtype
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-operator
+  namespace: cloudtype
+spec:
+  clusterIP: None
+  ports:
+  - port: 80
+    protocol: TCP
+  selector:
+    app: cloudtype
+    module: operator
+    service: cloudtype
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-operator-lb
+  namespace: cloudtype
+spec:
+  allocateLoadBalancerNodePorts: true
+  externalTrafficPolicy: Local
+  internalTrafficPolicy: Cluster
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: cloudtype
+    module: operator
+    service: cloudtype
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: cloudtype
+    module: server
+    service: cloudtype
+  name: cloudtype-server
+  namespace: cloudtype
+spec:
+  clusterIP: None
+  ports:
+  - port: 9009
+    protocol: TCP
+    targetPort: 9009
+  selector:
+    app: cloudtype
+    module: server
+    service: cloudtype
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: builder
+    module: docker-daemon
+    service: cloudtype
+  name: docker-daemon
+  namespace: cloudtype
+spec:
+  clusterIP: None
+  ports:
+  - port: 2376
+    protocol: TCP
+  selector:
+    app: builder
+    module: docker-daemon
+    service: cloudtype
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: cloudtype
+    module: mongodb
+    service: cloudtype
+  name: mongo
+  namespace: cloudtype
+spec:
+  clusterIP: None
+  ports:
+  - port: 27017
+    protocol: TCP
+    targetPort: 27017
+  selector:
+    app: cloudtype
+    module: mongodb
+    service: cloudtype
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: cloudtype
+    module: mongodb
+    service: cloudtype
+  name: pvc-mongo
+  namespace: cloudtype
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: agent
+    module: agent
+    service: cloudtype
+  name: cloudtype-agent
+  namespace: cloudtype
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent
+      module: agent
+      service: cloudtype
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: agent
+        module: agent
+        service: cloudtype
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: purpose
+                operator: In
+                values:
+                - system
+            weight: 1
+      containers:
+      - env:
+        - name: NODE_ENV
+          value: production
+        image: cloudtype/agent:nightly
+        imagePullPolicy: Always
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+        name: agent
+        ports:
+        - containerPort: 8080
+        - containerPort: 8443
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+        startupProbe:
+          initialDelaySeconds: 5
+          tcpSocket:
+            port: 8080
+      serviceAccountName: cloudtype-agent
+      terminationGracePeriodSeconds: 5
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cloudtype
+    module: dashboard
+    service: cloudtype
+  name: cloudtype-dashboard
+  namespace: cloudtype
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudtype
+      module: dashboard
+      service: cloudtype
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: cloudtype
+        module: dashboard
+        service: cloudtype
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: purpose
+                operator: In
+                values:
+                - system
+            weight: 1
+      containers:
+      - image: cloudtype/dashboard:nightly
+        imagePullPolicy: Always
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sleep
+              - "5"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+        name: dashboard
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: nginx-conf
+          readOnly: true
+          subPath: nginx.conf
+      enableServiceLinks: false
+      restartPolicy: Always
+      serviceAccountName: cloudtype-sa
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: nginx.conf
+            path: nginx.conf
+          name: cloudtype-dashboard-configmap
+        name: nginx-conf
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cloudtype
+    module: operator
+    service: cloudtype
+  name: cloudtype-operator
+  namespace: cloudtype
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudtype
+      module: operator
+      service: cloudtype
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: cloudtype
+        module: operator
+        service: cloudtype
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: purpose
+                operator: In
+                values:
+                - system
+            weight: 1
+      containers:
+      - image: cloudtype/operator:nightly
+        imagePullPolicy: Always
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sleep
+              - "5"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+        name: operator
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+        volumeMounts:
+        - mountPath: /etc/nginx/nginx.conf
+          name: nginx-conf
+          readOnly: true
+          subPath: nginx.conf
+      enableServiceLinks: true
+      restartPolicy: Always
+      serviceAccountName: cloudtype-sa
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+      volumes:
+      - configMap:
+          defaultMode: 420
+          items:
+          - key: nginx.conf
+            path: nginx.conf
+          name: cloudtype-operator-configmap
+        name: nginx-conf
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cloudtype
+    module: server
+    service: cloudtype
+  name: cloudtype-server
+  namespace: cloudtype
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudtype
+      module: server
+      service: cloudtype
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: cloudtype
+        module: server
+        service: cloudtype
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: purpose
+                operator: In
+                values:
+                - system
+            weight: 1
+      containers:
+      - env:
+        - name: NODE_ENV
+          value: production
+        - name: DEBUG
+          value: cloudtype:*,cloudtype-k8s:*
+        - name: CLOUDTYPE_DB_URL
+          valueFrom:
+            secretKeyRef:
+              key: MONGODB_URL
+              name: cloudtype-secrets
+        - name: CLOUDTYPE_DB_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: MONGODB_DATABASE
+              name: cloudtype-secrets
+        - name: AGENT_ENDPOINT
+          value: https://cloudtype-agent.cloudtype.svc:8443
+        - name: AGENT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: AGENT_TOKEN
+              name: cloudtype-secrets
+        image: cloudtype/server:nightly
+        imagePullPolicy: Always
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sleep
+              - "5"
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /
+            port: 9009
+            scheme: HTTP
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 180
+        name: server
+        ports:
+        - containerPort: 9009
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /
+            port: 9009
+            scheme: HTTP
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 180
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: 10m
+            memory: 128Mi
+      enableServiceLinks: false
+      restartPolicy: Always
+      serviceAccountName: cloudtype-sa
+      terminationGracePeriodSeconds: 20
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: builder
+    module: docker-daemon
+    service: cloudtype
+  name: docker-daemon
+  namespace: cloudtype
+spec:
+  minReadySeconds: 10
+  replicas: 1
+  selector:
+    matchLabels:
+      app: builder
+      module: docker-daemon
+      service: cloudtype
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: builder
+        module: docker-daemon
+        service: cloudtype
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: purpose
+                operator: In
+                values:
+                - system
+            weight: 1
+      containers:
+      - env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+        image: docker:20-dind
+        name: docker-dind
+        ports:
+        - containerPort: 2376
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+        securityContext:
+          privileged: true
+      serviceAccountName: cloudtype-builder
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cloudtype
+    module: mongodb
+    service: cloudtype
+  name: mongo
+  namespace: cloudtype
+spec:
+  progressDeadlineSeconds: 600
+  selector:
+    matchLabels:
+      app: cloudtype
+      module: mongodb
+      service: cloudtype
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: cloudtype
+        module: mongodb
+        service: cloudtype
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - preference:
+              matchExpressions:
+              - key: purpose
+                operator: In
+                values:
+                - system
+            weight: 1
+      containers:
+      - image: mongo:5.0
+        imagePullPolicy: IfNotPresent
+        name: mongo
+        ports:
+        - containerPort: 27017
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 20m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+        volumeMounts:
+        - mountPath: /data/db
+          name: mongo-volume
+          subPath: data
+      enableServiceLinks: false
+      restartPolicy: Always
+      securityContext:
+        fsGroupChangePolicy: OnRootMismatch
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoExecute
+        operator: Exists
+      - effect: NoSchedule
+        operator: Exists
+      volumes:
+      - name: mongo-volume
+        persistentVolumeClaim:
+          claimName: pvc-mongo
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  labels:
+    app: cloudtype
+    module: server
+    service: cloudtype
+  name: server-hpa
+  namespace: cloudtype
+spec:
+  maxReplicas: 3
+  metrics:
+  - resource:
+      name: cpu
+      target:
+        averageUtilization: 80
+        type: Utilization
+    type: Resource
+  minReplicas: 1
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: server
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cloudtype-np-ingress
+  namespace: cloudtype
+spec:
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cloudtype-np-namespace
+  namespace: cloudtype
+spec:
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          app.kubernetes.io/name: ingress-nginx
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  podSelector: {}
+  policyTypes:
+  - Ingress

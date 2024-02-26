@@ -1,0 +1,26 @@
+namespace: cloudtype
+resources:
+  - ns.yaml
+  # - registry.yaml
+  - serviceaccount.yaml
+  - networkpolicy.yaml
+  - secrets.yaml
+  - mongo.yaml
+  - server.yaml
+  - agent.yaml
+  - builder.yaml
+  - dashboard.yaml
+  - operator.yaml
+images:
+  - name: server
+    newName: cloudtype/server
+    newTag: nightly
+  - name: agent
+    newName: cloudtype/agent
+    newTag: nightly
+  - name: dashboard
+    newName: cloudtype/dashboard
+    newTag: nightly
+  - name: operator
+    newName: cloudtype/operator
+    newTag: nightly

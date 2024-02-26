@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-agent-lb
+  labels:
+    service: cloudtype
+    app: agent
+    module: agent
+spec:
+  ports:
+    - appProtocol: http
+      name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+    - appProtocol: https
+      name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    service: cloudtype
+    app: agent
+    module: agent
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  internalTrafficPolicy: Cluster
+  allocateLoadBalancerNodePorts: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-agent
+  labels:
+    service: cloudtype
+    app: agent
+    module: agent
+spec:
+  ports:
+    - appProtocol: http
+      name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+    - appProtocol: https
+      name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    service: cloudtype
+    app: agent
+    module: agent
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudtype-agent
+  labels:
+    service: cloudtype
+    app: agent
+    module: agent
+spec:
+  selector:
+    matchLabels:
+      service: cloudtype
+      app: agent
+      module: agent
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        service: cloudtype
+        app: agent
+        module: agent
+    spec:
+      serviceAccountName: cloudtype-agent
+      containers:
+        - name: agent
+          image: agent
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          ports:
+            - containerPort: 8080
+            - containerPort: 8443
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+          env:
+            - name: NODE_ENV
+              value: production
+      terminationGracePeriodSeconds: 5
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: purpose
+                    operator: In
+                    values:
+                      - system
+      tolerations:
+        - operator: Exists
+          effect: NoExecute
+        - operator: Exists
+          effect: NoSchedule

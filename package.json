@@ -1,11 +1,9 @@
 {
   "name": "cloudtype",
   "version": "0.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "cloudtype",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "author": "",
-  "license": "BSD New"
+    "kustomize:build": "kustomize build deploy/1.0/kustomize > deploy/1.0/cloudtype.yaml"
+  }
 }

@@ -1,0 +1,163 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: cloudtype-operator-configmap
+data:
+  nginx.conf: |
+    worker_processes auto;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      sendfile on;
+      gzip on;
+
+      server {
+        index index.html;
+        root /app/html;
+
+        resolver kube-dns.kube-system.svc.cluster.local valid=1s;
+        set $upstream_endpoint cloudtype-server.cloudtype.svc.cluster.local:9009;
+
+        location /api/ {
+          rewrite ^/api(/.*)$ $1 break;
+          
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $remote_addr;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Host $http_host;
+
+          proxy_pass http://$upstream_endpoint;
+          proxy_redirect off;
+        }
+
+        location / {
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $remote_addr;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_set_header Host $http_host;
+
+          try_files $uri $uri/ /index.html;
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-operator-lb
+spec:
+  ports:
+    - appProtocol: http
+      name: http
+      port: 80
+      protocol: TCP
+      targetPort: 80
+  selector:
+    service: cloudtype
+    app: cloudtype
+    module: operator
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  internalTrafficPolicy: Cluster
+  allocateLoadBalancerNodePorts: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudtype-operator
+spec:
+  ports:
+    - port: 80
+      protocol: TCP
+  selector:
+    service: cloudtype
+    app: cloudtype
+    module: operator
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudtype-operator
+  labels:
+    service: cloudtype
+    app: cloudtype
+    module: operator
+spec:
+  selector:
+    matchLabels:
+      service: cloudtype
+      app: cloudtype
+      module: operator
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        service: cloudtype
+        app: cloudtype
+        module: operator
+    spec:
+      containers:
+        - name: operator
+          image: operator
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sleep
+                  - '5'
+          volumeMounts:
+            - name: nginx-conf
+              readOnly: true
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: cloudtype-operator-configmap
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+            defaultMode: 420
+      restartPolicy: Always
+      serviceAccountName: cloudtype-sa
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: purpose
+                    operator: In
+                    values:
+                      - system
+      tolerations:
+        - operator: Exists
+          effect: NoExecute
+        - operator: Exists
+          effect: NoSchedule
+      enableServiceLinks: true
